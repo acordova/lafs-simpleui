@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Simple Secure File Browser</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- Bootstrap -->
+    <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
+	<style>
+		#capInput {
+			width: 400px;
+		}
+	</style>
+  </head>
+  <body>
+	<div class="container">
+		<div class="row">
+			<div class="span12">
+    			<h1>Simple Secure File Browser</h1>
+			</div>
+		</div>
+		
+		<div id="capprompt" class="row" hidden>
+			<div class="span12">
+				<form class="form-inline" role="form" action="/static/simpleui/index.html" method="get">
+			  		<div class="form-group">
+			    		<label class="sr-only" for="capInput">Root Capability</label>
+			    		<input type="text" class="form-control" name="capInput" id="capInput" placeholder="Enter root capability">
+			  		</div>
+			  		<button type="submit" class="btn btn-default">Enter</button>
+				</form>
+			</div>
+		</div>
+		
+		<div class="row">
+			<div class="span12">
+				<ul class="breadcrumb" id="pathList"></ul>
+			</div>
+		</div>
+		
+		<div class="row">
+			<div class="span12">
+				<table class="table table-condensed" id="entriesTable"></table>
+			</div>
+		</div>
+	</div>
+
+	<script id="pathScript" type="text/html">
+	{{#path}}
+		<li><a href="#" onclick="truncatePath({{idx}});">{{name}}</a></li>
+	{{/path}}
+	</script>
+	
+	<script id="listing" type="text/html">
+		<tr><th>Name</th><th>Type</th><th>Size</th><th>Time</th></tr>
+		{{#entries}}
+			<tr><td><a href="{{target}}" onclick="{{action}}">{{name}}</a></td>
+			<td>{{type}}</td>
+			<td>{{size}}</td>
+			<td>{{time}}</td></tr>
+		{{/entries}}
+	</script>
+	
+    <script src="http://code.jquery.com/jquery.js"></script>
+    <script src="js/bootstrap.min.js"></script>
+	<script src="js/ICanHaz.min.js"></script>
+	
+	<script>
+	var path = [];
+	
+	$(document).ready(function() {
+		
+		// try to load root cap from prompt
+		var rcap = getParam('capInput');
+		if(rcap == null) {
+			$("#capprompt").show();
+			$("#pathList").hide();
+		}
+		else {
+			path = [{'name':'root', 'uri':rcap, 'idx':0}];
+			loadTable();
+		}
+	});
+
+	function goTo(dir) {
+		dir.idx = path.length;
+		path.push(dir);
+		loadTable();
+	}
+	
+	function truncatePath(i) {
+		path = path.slice(0, i+1);
+		loadTable();
+	}
+	
+	function getParam(sParam) {
+	    var sPageURL = document.location.search.substring(1);
+	    var sURLVariables = sPageURL.split('&');
+	    for (var i = 0; i < sURLVariables.length; i++) {
+	        var sParameterName = sURLVariables[i].split('=');
+	        if (sParameterName[0] == sParam) {
+	            return sParameterName[1];
+	        }
+	    }
+		return null;
+	}
+	
+	
+	function loadTable() {
+		
+		var uri = path[path.length-1].uri;
+		
+		$.getJSON('/uri/' + uri + '?t=json', function(data) {
+		
+			//console.log(data);
+			
+			var entries = [];
+			
+			$.each(data[1].children, function(k,v) {
+				
+				var sz = '';
+				if(v[1].hasOwnProperty('size')) {
+					sz = v[1].size;
+				}
+				
+				var dt = '';
+				if(v[1].hasOwnProperty('metadata') && 
+					v[1].metadata.hasOwnProperty('tahoe')) {
+					dt = new Date(v[1].metadata.tahoe.linkmotime * 1000)
+				}
+				
+				// defaults for directories
+				var target='#';
+				var action = "goTo({'name':'" + k + "','uri':'"+ v[1].ro_uri + "'});"
+				var typ = 'dir';
+				
+				// changes for files
+				if(v[0] != 'dirnode') {
+					typ = 'file';
+					action = '';
+					target = '/uri/' + v[1].ro_uri + '?filename=' + k + '&save=true';
+				}
+				
+				entries.push({
+					'name':k, 
+					'type':typ, 
+					'size':sz, 
+					'time':dt,
+					'action': action,
+					'target': target
+				});
+			});
+			
+			var contentsHtml = ich.listing({'entries': entries});
+			$("#entriesTable").html(contentsHtml);
+			
+			var pathHtml = ich.pathScript({'path': path});
+			$('#pathList').html(pathHtml);
+		});
+	}
+	
+	</script>
+  </body>
+</html>
